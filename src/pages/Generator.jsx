@@ -33,24 +33,41 @@ export default function Generator() {
   const nav = useNavigate()
   const [form, setForm] = useState(() => ({ ...defaultInvite(), cerita: defaultInvite().cerita.map(c => ({ ...c })) }))
   const [tab, setTab] = useState('data')
-  const [lastLink, setLastLink] = useState('')
   const [gasUrl, setGasUrlState] = useState(() => getGasUrl())
   const [gasToken, setGasTokenState] = useState(() => getGasToken())
   const [msg, setMsg] = useState('')
+  const [genSlug, setGenSlug] = useState('')
+  const [genStatus, setGenStatus] = useState('idle') // 'idle' | 'saving' | 'success' | 'error'
+  const [genError, setGenError] = useState('')
+  const [dirty, setDirty] = useState(false)
   const audioRef = useRef(null)
   const [testPlaying, setTestPlaying] = useState(false)
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const setShow = (k, v) => setForm(f => ({ ...f, show: { ...f.show, [k]: v } }))
-  const setCerita = (i, k, v) => setForm(f => {
-    const cerita = f.cerita.map((c, j) => (j === i ? { ...c, [k]: v } : c))
-    return { ...f, cerita }
-  })
+  const markDirty = () => {
+    if (genStatus === 'success') setDirty(true)
+  }
+
+  const set = (k, v) => {
+    markDirty()
+    setForm(f => ({ ...f, [k]: v }))
+  }
+  const setShow = (k, v) => {
+    markDirty()
+    setForm(f => ({ ...f, show: { ...f.show, [k]: v } }))
+  }
+  const setCerita = (i, k, v) => {
+    markDirty()
+    setForm(f => {
+      const cerita = f.cerita.map((c, j) => (j === i ? { ...c, [k]: v } : c))
+      return { ...f, cerita }
+    })
+  }
 
   const pickPhoto = async (key, file) => {
     if (!file) return
     try {
       const url = await fileToDataUrlCompressed(file)
+      markDirty()
       set(key, url)
     } catch { setMsg('File harus gambar ya.') }
   }
@@ -58,6 +75,7 @@ export default function Generator() {
     if (!file || form.galeri.length >= 6) return
     try {
       const url = await fileToDataUrlCompressed(file)
+      markDirty()
       setForm(f => ({ ...f, galeri: [...f.galeri, url] }))
     } catch {}
   }
@@ -74,38 +92,47 @@ export default function Generator() {
     } catch { setMsg('Browser memblokir autoplay — coba lagi.') }
   }
 
-  const doSave = async () => {
-    const slug = makeSlug(form.priaPanggilan, form.wanitaPanggilan)
+  const onGenerate = async () => {
+    if (genStatus === 'saving') return
+    setGenStatus('saving')
+    setGenError('')
+    setMsg('')
+    const slug = genSlug || makeSlug(form.priaPanggilan, form.wanitaPanggilan)
     const res = await saveInvite(slug, form)
-    if (res.ok) {
+    if (res && res.ok) {
+      setGenSlug(slug)
       setLastSlug(slug)
-      return slug
+      setGenStatus('success')
+      setDirty(false)
+    } else {
+      setGenStatus('error')
+      setGenError(res?.error || 'Gagal menyimpan undangan.')
     }
-    setMsg(res.error ? `Gagal menyimpan: ${res.error}` : 'Gagal menyimpan undangan.')
-    return null
   }
 
-  const onLihatHasil = async () => {
-    const slug = await doSave()
-    if (slug) nav(`/u/${slug}`)
+  const genLink = genSlug ? `${window.location.origin}/u/${genSlug}` : ''
+
+  const onLihatHasil = () => {
+    if (genSlug) nav(`/u/${genSlug}`)
   }
   const onSalinLink = async () => {
-    const slug = await doSave()
-    if (!slug) return
-    const link = `${window.location.origin}/u/${slug}`
-    setLastLink(link)
-    try { await navigator.clipboard.writeText(link); setMsg('Link undangan tersalin!') }
-    catch { setMsg('Link dibuat — salin manual dari kotak di bawah.') }
+    if (!genLink) return
+    try {
+      await navigator.clipboard.writeText(genLink)
+      setMsg('Link undangan tersalin!')
+    } catch {
+      setMsg('Link dibuat — salin manual dari kotak di bawah.')
+    }
   }
-  const onCetak = async () => {
-    const slug = await doSave()
-    if (slug) { setLastSlug(slug); window.print() }
+  const onCetak = () => {
+    if (genSlug) {
+      setLastSlug(genSlug)
+      window.print()
+    }
   }
-  const onKirimWA = async () => {
-    const slug = await doSave()
-    if (!slug) return
-    const link = `${window.location.origin}/u/${slug}`
-    window.open(buildWaLink(form.pesanWA, form.namaTamu, link), '_blank')
+  const onKirimWA = () => {
+    if (!genLink) return
+    window.open(buildWaLink(form.pesanWA, form.namaTamu, genLink), '_blank')
   }
 
   const saveGasUrl = () => {
@@ -188,7 +215,7 @@ export default function Generator() {
                   {form.galeri.map((g, i) => (
                     <div className="gallery-thumb" key={i}>
                       <img src={g} alt={`Galeri ${i + 1}`} />
-                      <button onClick={() => setForm(f => ({ ...f, galeri: f.galeri.filter((_, j) => j !== i) }))}>×</button>
+                      <button onClick={() => { markDirty(); setForm(f => ({ ...f, galeri: f.galeri.filter((_, j) => j !== i) })) }}>×</button>
                     </div>
                   ))}
                   {form.galeri.length < 6 && (
@@ -243,7 +270,7 @@ export default function Generator() {
                       if (!f) return
                       if (f.size > 3 * 1024 * 1024) { setMsg('MP3 maksimal 3 MB ya.'); return }
                       const r = new FileReader()
-                      r.onload = () => setForm(s => ({ ...s, musikUrl: r.result }))
+                      r.onload = () => { markDirty(); setForm(s => ({ ...s, musikUrl: r.result })) }
                       r.readAsDataURL(f)
                     }} />
                   </Field>
@@ -289,7 +316,7 @@ export default function Generator() {
                 <Field label="Nama tamu" opt="tampil di cover"><input type="text" value={form.namaTamu} onChange={e => set('namaTamu', e.target.value)} placeholder="Keluarga Besar Hartono" /></Field>
                 <Field label="Pesan WhatsApp" opt="gunakan {nama} dan {link}"><textarea value={form.pesanWA} onChange={e => set('pesanWA', e.target.value)} /></Field>
                 <Field label="Pesan RSVP terkirim"><input type="text" value={form.pesanRSVP} onChange={e => set('pesanRSVP', e.target.value)} /></Field>
-                <button className="btn btn-outline" onClick={onKirimWA} style={{ padding: '10px 20px', fontSize: 14 }}>💬 Kirim via WhatsApp</button>
+                <button className="btn btn-outline" disabled={genStatus !== 'success'} onClick={onKirimWA} style={{ padding: '10px 20px', fontSize: 14 }}>💬 Kirim via WhatsApp</button>
               </div>
             </>
           )}
@@ -327,19 +354,41 @@ export default function Generator() {
           )}
 
           <div className="actions">
-            <button className="btn btn-primary" onClick={onLihatHasil}>Lihat Hasil</button>
-            <button className="btn btn-outline" onClick={onSalinLink}>Salin Link Undangan</button>
-            <button className="btn btn-outline" onClick={onCetak}>Download PDF / Cetak</button>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 16, padding: '14px 28px', flex: '1 1 100%' }}
+              disabled={genStatus === 'saving'}
+              onClick={onGenerate}
+            >
+              {genStatus === 'saving' ? '⏳ Menyimpan...' : '⚡ Generate Undangan'}
+            </button>
+            <button className="btn btn-outline" disabled={genStatus !== 'success'} onClick={onLihatHasil}>Lihat Hasil</button>
+            <button className="btn btn-outline" disabled={genStatus !== 'success'} onClick={onSalinLink}>Salin Link Undangan</button>
+            <button className="btn btn-outline" disabled={genStatus !== 'success'} onClick={onCetak}>Download PDF / Cetak</button>
           </div>
           {msg && <p className="music-label" style={{ marginTop: 12 }}>{msg}</p>}
-          {lastLink && (
-            <div className="result-box">
-              <b>Link undangan:</b>
+
+          {genStatus === 'success' && genSlug && (
+            <div className="result-box" style={{ borderColor: '#7bc88f', background: '#f0fdf4' }}>
+              <b style={{ color: '#1b5e20' }}>✅ Berhasil! Undangan tersimpan.</b>
               <div className="link-row">
-                <input readOnly value={lastLink} onFocus={e => e.target.select()} />
-                <button className="btn btn-outline" style={{ padding: '9px 16px', fontSize: 13 }} onClick={() => { navigator.clipboard.writeText(lastLink).catch(() => {}); setMsg('Tersalin!') }}>Salin</button>
+                <input readOnly value={genLink} onFocus={e => e.target.select()} />
+                <button className="btn btn-outline" style={{ padding: '9px 16px', fontSize: 13 }} onClick={onSalinLink}>Salin Link</button>
               </div>
-              <p className="hint" style={{ marginTop: 8 }}>Tanpa GAS, link hanya terbuka penuh di browser ini.</p>
+              {dirty && (
+                <p className="hint" style={{ color: '#b45309', marginTop: 10, fontWeight: 500 }}>
+                  ⚠ Ada perubahan setelah generate terakhir — klik Generate lagi agar tersimpan.
+                </p>
+              )}
+            </div>
+          )}
+
+          {genStatus === 'error' && (
+            <div className="result-box" style={{ borderColor: '#e8a0a0', background: '#fdf3f3' }}>
+              <b style={{ color: '#b3261e' }}>❌ Gagal menyimpan: {genError}</b>
+              <p className="hint" style={{ marginTop: 8, color: '#666' }}>
+                Data tetap tersimpan lokal di browser ini, tapi link belum bisa dibuka dari perangkat lain.
+              </p>
             </div>
           )}
 

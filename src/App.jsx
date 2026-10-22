@@ -1,4 +1,4 @@
-import { Routes, Route, Link, NavLink, useNavigate } from 'react-router-dom'
+import { Routes, Route, Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import Generator from './pages/Generator.jsx'
 import Invite from './pages/Invite.jsx'
 import ListUndangan from './pages/ListUndangan.jsx'
@@ -23,6 +23,17 @@ function TopTabs() {
 }
 
 export default function App() {
+  const location = useLocation()
+  const isGuest = location.pathname.startsWith('/u/')
+
+  if (isGuest) {
+    return (
+      <Routes>
+        <Route path="/u/:slug" element={<Invite />} />
+      </Routes>
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -38,7 +49,6 @@ export default function App() {
         <Route path="/" element={<Generator />} />
         <Route path="/list" element={<ListUndangan />} />
         <Route path="/bulk" element={<BulkGenerator />} />
-        <Route path="/u/:slug" element={<Invite />} />
         <Route path="*" element={<div className="notfound"><h1>Halaman tidak ditemukan</h1><p><Link to="/">Kembali ke Generator</Link></p></div>} />
       </Routes>
       <footer className="footer">
