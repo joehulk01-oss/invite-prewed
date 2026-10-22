@@ -72,14 +72,19 @@ export default function ListUndangan() {
   const saveEdit = async () => {
     if (!editing || !editName.trim()) return
     setSaving(true)
-    const res = await updateInviteRemote(editing.slug, { namaTamu: editName.trim() })
-    setSaving(false)
-    if (res.ok) {
-      setEditing(null)
-      delete dataCache.current[editing.slug]
-      load()
-    } else {
-      alert('Gagal menyimpan: ' + (res.error || 'unknown'))
+    try {
+      const res = await updateInviteRemote(editing.slug, { namaTamu: editName.trim() })
+      if (res && res.ok) {
+        setEditing(null)
+        delete dataCache.current[editing.slug]
+        load()
+      } else {
+        alert('Gagal menyimpan: ' + (res?.error || 'unknown'))
+      }
+    } catch (e) {
+      alert('Gagal menyimpan: ' + String(e && e.message || e))
+    } finally {
+      setSaving(false)
     }
   }
 

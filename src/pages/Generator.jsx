@@ -81,7 +81,7 @@ export default function Generator() {
       setLastSlug(slug)
       return slug
     }
-    setMsg('Gagal menyimpan undangan.')
+    setMsg(res.error ? `Gagal menyimpan: ${res.error}` : 'Gagal menyimpan undangan.')
     return null
   }
 

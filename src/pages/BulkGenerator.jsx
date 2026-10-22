@@ -80,7 +80,7 @@ export default function BulkGenerator() {
 
   const startBulk = async () => {
     if (!masterData || !names.length || running) return
-    if (!confirm(`Generate ${names.length} undangan dari master "${masterData.namaPria} & ${masterData.namaWanita}"?`)) return
+    if (!confirm(`Generate ${names.length} undangan dari master "${masterData.priaPanggilan} & ${masterData.wanitaPanggilan}"?`)) return
     cancelRef.current = false
     setRunning(true)
     setFinished(false)
@@ -96,7 +96,10 @@ export default function BulkGenerator() {
         const src = template || masterData
         const data = { ...src, namaTamu: nama }
         delete data.slug
-        await saveInvite(slug, data)
+        const res = await saveInvite(slug, data)
+        if (res && !res.ok) {
+          throw new Error(res.error || 'Gagal simpan')
+        }
         if (!template) {
           // simpan pertama: foto di-upload ke Drive, ambil balik versi link-nya
           const back = await loadInvite(slug).catch(() => null)
@@ -155,8 +158,8 @@ export default function BulkGenerator() {
         </div>
         {masterData && (
           <div className="muted" style={{ marginTop: 10 }}>
-            ✅ Master aktif: <b>{masterData.namaPria} & {masterData.namaWanita}</b>
-            {masterData.tanggalAkad ? ` · Akad ${masterData.tanggalAkad}` : ''}
+            ✅ Master aktif: <b>{masterData.priaPanggilan} & {masterData.wanitaPanggilan}</b>
+            {masterData.tglAkad ? ` · Akad ${masterData.tglAkad}` : ''}
           </div>
         )}
       </section>

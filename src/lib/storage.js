@@ -154,44 +154,53 @@ function lsLoad(slug) {
 
 export async function saveInvite(slug, data) {
   const payload = { ...data, slug, updatedAt: new Date().toISOString() }
+  const localOk = lsSave(slug, payload)
   const gasUrl = getGasUrl()
   if (gasUrl) {
     try {
-      await fetch(gasUrl, {
+      const res = await fetch(gasUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         redirect: 'follow',
         body: JSON.stringify({ action: 'save', slug, token: getGasToken(), data: payload }),
       })
-      lsSave(slug, payload)
+      let json = null
+      try { json = await res.json() } catch {}
+      if (json && json.ok === false) {
+        return { ok: false, via: 'gas', error: json.error || 'Gagal menyimpan ke Google Sheets' }
+      }
+      if (!res.ok) {
+        return { ok: false, via: 'gas', error: (json && json.error) || `GAS error ${res.status}` }
+      }
       return { ok: true, via: 'gas' }
     } catch (e) {
       console.error('GAS save gagal, fallback lokal', e)
+      return { ok: false, via: 'gas', error: String(e && e.message || e) }
     }
   }
-  return { ok: lsSave(slug, payload), via: 'local' }
+  return { ok: localOk, via: 'local' }
 }
 
 export async function loadInvite(slug) {
-  // 1. Cek local storage dulu
-  const local = lsLoad(slug)
-  if (local) return local
-
-  // 2. Jika tidak ada di local, ambil dari GAS
+  // 1. Ambil dari GAS DULU bila GAS URL terisi
   const gasUrl = getGasUrl()
   if (gasUrl) {
     try {
       const res = await fetch(`${gasUrl}?slug=${encodeURIComponent(slug)}`, { redirect: 'follow' })
       if (res.ok) {
         const json = await res.json()
-        if (json && json.data) {
+        if (json && json.ok && json.data) {
           lsSave(slug, json.data)
           return json.data
         }
       }
-    } catch (e) { console.error('GAS load gagal, fallback lokal', e) }
+    } catch (e) {
+      console.error('GAS load gagal, fallback lokal', e)
+    }
   }
-  return null
+
+  // 2. Fallback ke local storage bila GAS kosong/gagal
+  return lsLoad(slug)
 }
 
 export function listInvites() {
