@@ -135,8 +135,7 @@ export default function BulkGenerator() {
 
       {!gasOk && (
         <div className="card" style={{ borderColor: '#e8a0a0', background: '#fdf3f3' }}>
-          <b>⚠ GAS belum disambungkan.</b> Bulk generator butuh Google Sheets sebagai penyimpanan.
-          Isi URL Web App + token di tab <Link to="/?tab=settings">Pengaturan</Link> dulu.
+          <b>⚠ GAS belum disambungkan.</b> Bulk generator butuh Google Sheets sebagai penyimpanan aktif.
         </div>
       )}
 

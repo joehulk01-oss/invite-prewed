@@ -3,6 +3,7 @@ import Generator from './pages/Generator.jsx'
 import Invite from './pages/Invite.jsx'
 import ListUndangan from './pages/ListUndangan.jsx'
 import BulkGenerator from './pages/BulkGenerator.jsx'
+import AdminGas from './pages/AdminGas.jsx'
 import { getLastSlug } from './lib/storage.js'
 
 function TopTabs() {
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/" element={<Generator />} />
         <Route path="/list" element={<ListUndangan />} />
         <Route path="/bulk" element={<BulkGenerator />} />
+        <Route path="/admin-gas" element={<AdminGas />} />
         <Route path="*" element={<div className="notfound"><h1>Halaman tidak ditemukan</h1><p><Link to="/">Kembali ke Generator</Link></p></div>} />
       </Routes>
       <footer className="footer">

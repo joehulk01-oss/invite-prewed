@@ -175,7 +175,7 @@ export default function ListUndangan() {
       {!connected && (
         <div className="result-box">
           <b>GAS belum disambungkan.</b>
-          <p className="hint">Isi URL Web App GAS di tab Pengaturan pada halaman Generator, lalu kembali ke sini.</p>
+          <p className="hint">Koneksi Google Apps Script belum dikonfigurasikan di sistem ini.</p>
         </div>
       )}
 

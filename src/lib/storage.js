@@ -265,6 +265,41 @@ export async function deleteInviteRemote(slug) {
   return resGet.json()
 }
 
+// --- Settings via GAS (spreadsheet sheet "settings", dikunci PIN admin) ---
+export async function getSettingsRemote(pin, overrideGasUrl) {
+  const gasUrl = (overrideGasUrl || getGasUrl()).trim()
+  if (!gasUrl) return { ok: false, error: 'URL Web App GAS belum diisi.' }
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      redirect: 'follow',
+      body: JSON.stringify({ action: 'getSettings', pin }),
+    })
+    if (!res.ok) return { ok: false, error: `GAS error ${res.status}` }
+    return res.json()
+  } catch (e) {
+    return { ok: false, error: 'Gagal menghubungi GAS: ' + String(e && e.message || e) }
+  }
+}
+
+export async function saveSettingsRemote(pin, settings, overrideGasUrl) {
+  const gasUrl = (overrideGasUrl || getGasUrl()).trim()
+  if (!gasUrl) return { ok: false, error: 'URL Web App GAS belum diisi.' }
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      redirect: 'follow',
+      body: JSON.stringify({ action: 'saveSettings', pin, settings }),
+    })
+    if (!res.ok) return { ok: false, error: `GAS error ${res.status}` }
+    return res.json()
+  } catch (e) {
+    return { ok: false, error: 'Gagal menghubungi GAS: ' + String(e && e.message || e) }
+  }
+}
+
 // --- RSVP & ucapan ---
 function rsvpKey(slug, kind) { return `${kind}_${slug}` }
 export function saveRsvp(slug, entry) {

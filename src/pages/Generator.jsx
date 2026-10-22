@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import InvitationView from '../components/InvitationView.jsx'
 import {
   DESIGN_TEMPLATES, defaultInvite, makeSlug, saveInvite,
-  fileToDataUrlCompressed, getGasUrl, setGasUrl,
-  getGasToken, setGasToken, setLastSlug, buildWaLink,
+  fileToDataUrlCompressed, setLastSlug, buildWaLink,
 } from '../lib/storage.js'
 
 function Field({ label, opt, children }) {
@@ -33,8 +32,6 @@ export default function Generator() {
   const nav = useNavigate()
   const [form, setForm] = useState(() => ({ ...defaultInvite(), cerita: defaultInvite().cerita.map(c => ({ ...c })) }))
   const [tab, setTab] = useState('data')
-  const [gasUrl, setGasUrlState] = useState(() => getGasUrl())
-  const [gasToken, setGasTokenState] = useState(() => getGasToken())
   const [msg, setMsg] = useState('')
   const [genSlug, setGenSlug] = useState('')
   const [genStatus, setGenStatus] = useState('idle') // 'idle' | 'saving' | 'success' | 'error'
@@ -135,11 +132,7 @@ export default function Generator() {
     window.open(buildWaLink(form.pesanWA, form.namaTamu, genLink), '_blank')
   }
 
-  const saveGasUrl = () => {
-    setGasUrl(gasUrl)
-    setGasToken(gasToken)
-    setMsg(gasUrl ? 'URL GAS + token tersimpan.' : 'URL GAS dikosongkan — pakai localStorage.')
-  }
+
 
   return (
     <>
@@ -338,17 +331,6 @@ export default function Generator() {
                     {label}
                   </label>
                 ))}
-              </div>
-              <div className="fgroup">
-                <h3>Koneksi GAS</h3>
-                <p className="hint">Tempel URL Web App GAS di sini kalau sudah deploy — undangan tersimpan ke Drive + Sheet dan bisa dibuka siapa saja.</p>
-                <Field label="URL Web App GAS" opt="opsional">
-                  <input type="url" value={gasUrl} onChange={e => setGasUrlState(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" />
-                </Field>
-                <Field label="Token GAS" opt="samakan dengan Script Properties">
-                  <input type="text" value={gasToken} onChange={e => setGasTokenState(e.target.value)} placeholder="k1ckm4n-2026-und4ngan" />
-                </Field>
-                <button className="btn btn-outline" onClick={saveGasUrl} style={{ padding: '10px 20px', fontSize: 14 }}>Simpan Koneksi GAS</button>
               </div>
             </>
           )}

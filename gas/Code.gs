@@ -15,16 +15,19 @@
  * 4. Project Settings (ikon gerigi) → Script Properties → Add:
  *      SHEET_ID        = ID Sheet dari langkah 1
  *      DRIVE_FOLDER_ID = ID folder dari langkah 2 (boleh kosong)
+ *      ADMIN_PIN       = PIN rahasia super admin (wajib untuk akses /admin-gas & sheet settings)
  *      TOKEN           = string rahasia bebas, misal: k1ckm4n-2026-und4ngan
  *                        (boleh kosong = tanpa token; kalau diisi, frontend wajib kirim token yang sama)
  * 5. Deploy → New deployment → tipe "Web app" →
  *      Execute as: Me
  *      Who has access: Anyone
  *    → Deploy → salin Web App URL (https://script.google.com/macros/s/.../exec)
- * 6. Di frontend (tab Pengaturan): tempel URL Web App + TOKEN yang sama, klik Simpan.
+ * 6. Di frontend (halaman rahasia /admin-gas): masukkan URL Web App + PIN admin, lalu simpan token.
  *    Kalau Code.gs ini hasil update: Deploy → Manage deployments → Edit → New version → Deploy.
  *
  * API:
+ *  POST { action:'getSettings', pin } → { ok:true, settings:{...} } / { ok:false, error }
+ *  POST { action:'saveSettings', pin, settings:{...} } → { ok:true } / { ok:false, error }
  *  POST { action:'save', slug, token, data:{...undangan...} } → { ok:true, slug } / { ok:false, error }
  *  POST { action:'update', slug, token, patch:{namaTamu:'...'} } → { ok:true, updated:true } / { ok:false, error }
  *  POST { action:'delete', slug, token } → { ok:true, deleted:true } / { ok:false, error }
@@ -40,6 +43,7 @@
 // ---------- util ----------
 
 var SHEET_NAME = 'invites';
+var SETTINGS_SHEET_NAME = 'settings';
 
 function json_(obj) {
   return ContentService
@@ -64,10 +68,77 @@ function getSheet_() {
   return sh;
 }
 
-// Token hanya dicek kalau TOKEN diisi di Script Properties.
-// Kalau kosong → siapa saja boleh nulis (mode santai, tetap butuh URL rahasia Web App).
+// Sheet "settings" (key-value) untuk menyimpan konfigurasi tersembunyi
+function getSettingsSheet_() {
+  var sheetId = getProps_().getProperty('SHEET_ID');
+  if (!sheetId) throw new Error('SHEET_ID belum diisi di Script Properties.');
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sh = ss.getSheetByName(SETTINGS_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(SETTINGS_SHEET_NAME);
+    sh.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function readSettings_() {
+  var sh = getSettingsSheet_();
+  var rows = sh.getDataRange().getValues();
+  var settings = {};
+  for (var i = 1; i < rows.length; i++) {
+    var k = String(rows[i][0] || '').trim();
+    if (k) {
+      settings[k] = rows[i][1];
+    }
+  }
+  return settings;
+}
+
+function writeSettings_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  var sh = getSettingsSheet_();
+  var rows = sh.getDataRange().getValues();
+  var keyMap = {};
+  for (var i = 1; i < rows.length; i++) {
+    var k = String(rows[i][0] || '').trim();
+    if (k) keyMap[k] = i + 1;
+  }
+  for (var key in obj) {
+    var val = obj[key];
+    var strVal = (val === null || val === undefined) ? '' : String(val);
+    if (keyMap[key]) {
+      sh.getRange(keyMap[key], 2).setValue(strVal);
+    } else {
+      sh.appendRow([key, strVal]);
+      keyMap[key] = sh.getLastRow();
+    }
+  }
+}
+
+// Validasi PIN admin untuk endpoint settings.
+// Jika ADMIN_PIN di Script Properties belum diatur, endpoint settings nonaktif.
+function checkPin_(pin) {
+  var adminPin = getProps_().getProperty('ADMIN_PIN');
+  if (!adminPin || !adminPin.trim()) {
+    return { ok: false, error: 'ADMIN_PIN belum diatur' };
+  }
+  if (String(pin || '').trim() !== adminPin.trim()) {
+    return { ok: false, error: 'PIN salah' };
+  }
+  return { ok: true };
+}
+
+// Token dicek dari Script Property TOKEN atau fallback ke sheet settings (key 'token').
+// Kalau kosong di keduanya → siapa saja boleh nulis (mode santai, tetap butuh URL rahasia Web App).
 function checkToken_(token) {
   var expected = getProps_().getProperty('TOKEN') || '';
+  if (!expected) {
+    try {
+      var s = readSettings_();
+      expected = s.token || s.TOKEN || '';
+    } catch (e) { }
+  }
   if (!expected) return true;
   return token === expected;
 }
@@ -129,10 +200,25 @@ function doPost(e) {
       body = {};
     }
 
+    var action = String(body.action || 'save');
+
+    // ENDPOINT SETTINGS (dikunci ADMIN_PIN; tanpa token)
+    if (action === 'getSettings') {
+      var pinCheck = checkPin_(body.pin);
+      if (!pinCheck.ok) return json_({ ok: false, error: pinCheck.error });
+      return json_({ ok: true, settings: readSettings_() });
+    }
+
+    if (action === 'saveSettings') {
+      var pinCheck = checkPin_(body.pin);
+      if (!pinCheck.ok) return json_({ ok: false, error: pinCheck.error });
+      writeSettings_(body.settings);
+      return json_({ ok: true });
+    }
+
     if (!checkToken_(body.token)) {
       return json_({ ok: false, error: 'token salah / tidak ada' });
     }
-    var action = String(body.action || 'save');
 
     // HAPUS undangan: { action:'delete', slug, token }
     if (action === 'delete') {
@@ -282,8 +368,11 @@ function doGet(e) {
 function testSetup() {
   var p = getProps_();
   Logger.log(p.getProperty('SHEET_ID') ? 'SHEET_ID ok' : 'SHEET_ID KOSONG');
-  Logger.log(p.getProperty('TOKEN') ? 'TOKEN ok (frontend wajib kirim token)' : 'TOKEN kosong (mode tanpa token)');
+  Logger.log(p.getProperty('ADMIN_PIN') ? 'ADMIN_PIN ok' : 'ADMIN_PIN kosong (endpoint settings nonaktif)');
+  Logger.log(p.getProperty('TOKEN') ? 'TOKEN ok (frontend wajib kirim token)' : 'TOKEN kosong (cek sheet settings)');
   Logger.log(p.getProperty('DRIVE_FOLDER_ID') ? 'DRIVE_FOLDER_ID ok' : 'DRIVE_FOLDER_ID kosong (pakai root Drive)');
   var sh = getSheet_();
   Logger.log('Sheet "' + SHEET_NAME + '" ok, baris: ' + sh.getLastRow());
+  var shs = getSettingsSheet_();
+  Logger.log('Sheet "' + SETTINGS_SHEET_NAME + '" ok, baris: ' + shs.getLastRow());
 }
