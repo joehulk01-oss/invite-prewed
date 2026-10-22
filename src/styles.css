@@ -216,6 +216,38 @@ img { max-width: 100%; display: block; }
 /* ---------- Invitation ---------- */
 .invite { --inv-bg: var(--tpl-bg); background: var(--inv-bg); color: var(--tpl-ink); font-family: var(--font-sans); }
 .invite-cover { position: relative; min-height: 92vh; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+
+/* Overlay kunci cover untuk mode tamu */
+.cover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 98;
+  background: var(--tpl-bg, #f6f0e6);
+  transition: opacity 0.6s ease;
+}
+.cover-backdrop.cover-opening {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.invite-cover.cover-locked {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  min-height: 100vh;
+  height: 100vh;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  overflow-y: auto;
+  box-shadow: 0 0 60px rgba(46,33,24,.3);
+  transition: transform 0.65s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s ease;
+}
+.invite-cover.cover-locked.cover-opening {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
 .invite-cover .cover-bg { position: absolute; inset: 0; }
 .invite-cover .cover-bg img { width: 100%; height: 100%; object-fit: cover; }
 .invite-cover .cover-bg .cover-fallback {

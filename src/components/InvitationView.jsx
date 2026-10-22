@@ -29,10 +29,26 @@ export default function InvitationView({ data, slug, interactive = true, onOpenM
   const contentRef = useRef(null)
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
+  const [opened, setOpened] = useState(false)
+  const [opening, setOpening] = useState(false)
   const [rsvpList, setRsvpList] = useState(() => (slug ? loadRsvp(slug) : []))
   const [wishList, setWishList] = useState(() => (slug ? loadWishes(slug) : []))
   const [f, setF] = useState({ nama: '', hadir: 'Hadir, insya Allah', ucapan: '' })
   const [sentMsg, setSentMsg] = useState('')
+
+  // Kunci scroll halaman hanya aktif untuk mode tamu (interactive === true) sebelum dibuka
+  useEffect(() => {
+    if (!interactive) return
+    window.scrollTo(0, 0)
+    if (!opened) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [interactive, opened])
 
   const musicUrl = d.musikMode === 'contoh'
     ? 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'
@@ -49,12 +65,23 @@ export default function InvitationView({ data, slug, interactive = true, onOpenM
   }
 
   const openInvite = () => {
-    contentRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (interactive && !opened) {
+      setOpening(true)
+      document.body.style.overflow = ''
+      setTimeout(() => {
+        setOpened(true)
+        setOpening(false)
+        contentRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 600)
+    } else {
+      contentRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
     if (musicOn && onOpenMusic !== false && interactive) {
-      // Coba putar musik setelah tamu menekan tombol (lolos aturan autoplay)
+      // Putar musik setelah tamu menekan tombol (lolos aturan autoplay)
       setTimeout(() => {
         audioRef.current?.play().then(() => setPlaying(true)).catch(() => {})
-      }, 600)
+      }, 500)
     }
   }
 
@@ -92,24 +119,29 @@ export default function InvitationView({ data, slug, interactive = true, onOpenM
       {musicOn && <audio ref={audioRef} src={musicUrl} loop preload="none" />}
 
       {/* COVER */}
-      <section className="invite-cover">
-        <div className="cover-bg">
-          {d.fotoCover
-            ? <img src={d.fotoCover} alt="Foto pasangan" />
-            : <div className="cover-fallback"><span className="mono">{initials(d.priaPanggilan)}&{initials(d.wanitaPanggilan)}</span></div>}
-        </div>
-        <div className="cover-shade" />
-        <div className="cover-content">
-          <div className="cover-kicker">THE WEDDING OF</div>
-          <h1 className="cover-names">{d.priaPanggilan} &amp; {d.wanitaPanggilan}</h1>
-          <div className="cover-date">{formatTanggal(d.tglAkad)}</div>
-          <div className="guest-card">
-            <div className="gk">KEPADA YTH.</div>
-            <div className="gn">{d.namaTamu || 'Bapak/Ibu/Saudara/i'}</div>
-          </div>
-          <button className="btn btn-gold btn-block" onClick={openInvite}>✉ Buka Undangan</button>
-        </div>
-      </section>
+      {(!interactive || !opened || opening) && (
+        <>
+          {interactive && !opened && <div className={`cover-backdrop${opening ? ' cover-opening' : ''}`} />}
+          <section className={`invite-cover${interactive && !opened ? ' cover-locked' : ''}${opening ? ' cover-opening' : ''}`}>
+            <div className="cover-bg">
+              {d.fotoCover
+                ? <img src={d.fotoCover} alt="Foto pasangan" />
+                : <div className="cover-fallback"><span className="mono">{initials(d.priaPanggilan)}&{initials(d.wanitaPanggilan)}</span></div>}
+            </div>
+            <div className="cover-shade" />
+            <div className="cover-content">
+              <div className="cover-kicker">THE WEDDING OF</div>
+              <h1 className="cover-names">{d.priaPanggilan} &amp; {d.wanitaPanggilan}</h1>
+              <div className="cover-date">{formatTanggal(d.tglAkad)}</div>
+              <div className="guest-card">
+                <div className="gk">KEPADA YTH.</div>
+                <div className="gn">{d.namaTamu || 'Bapak/Ibu/Saudara/i'}</div>
+              </div>
+              <button className="btn btn-gold btn-block" onClick={openInvite}>✉ Buka Undangan</button>
+            </div>
+          </section>
+        </>
+      )}
 
       <div ref={contentRef}>
         {/* SAVE THE DATE */}
