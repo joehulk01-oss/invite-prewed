@@ -174,8 +174,13 @@ export function getDesignTemplate(id) {
   return DESIGN_TEMPLATES[id] || DESIGN_TEMPLATES['elegan-krem']
 }
 
+// URL Web App GAS bawaan, ditanam di kode (keputusan user 2026-10-22:
+// full otomatis — browser mana pun langsung konek tanpa isi apa pun).
+// Tetap bisa ditimpa per-browser lewat localStorage / env VITE_GAS_URL.
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyZ6jh74LLvdCnI-4Y49EeSfzs1f1MdIEpQlvYTK8QgH6SmspiZVyJM0RytJ-J96cYM/exec'
+
 export function getGasUrl() {
-  return localStorage.getItem(GAS_URL_KEY) || import.meta.env.VITE_GAS_URL || ''
+  return localStorage.getItem(GAS_URL_KEY) || import.meta.env.VITE_GAS_URL || DEFAULT_GAS_URL
 }
 export function setGasUrl(url) {
   localStorage.setItem(GAS_URL_KEY, (url || '').trim())
@@ -185,6 +190,45 @@ export function getGasToken() {
 }
 export function setGasToken(tok) {
   localStorage.setItem(GAS_TOKEN_KEY, (tok || '').trim())
+}
+
+// --- Bootstrap otomatis (keputusan user 2026-10-22: full otomatis) ---
+// Token diambil sendiri dari sheet "settings" di spreadsheet lewat action
+// 'bootstrap' di GAS, lalu disimpan ke localStorage browser ini. Berkat ini
+// browser/perangkat baru langsung aktif tanpa mengisi URL/PIN/token.
+// Token tetap bisa diganti lewat /admin-gas (PIN); token yang basi
+// terdeteksi dari pesan error GAS dan otomatis diperbarui satu kali.
+let bootstrapPromise_ = null
+export async function ensureBootstrap(force = false) {
+  if (!force && getGasToken()) return true
+  if (!force && bootstrapPromise_) return bootstrapPromise_
+  const url = getGasUrl()
+  if (!url) return false
+  bootstrapPromise_ = (async () => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        body: JSON.stringify({ action: 'bootstrap' }),
+      })
+      const json = await res.json().catch(() => null)
+      if (json && json.ok && json.token) { setGasToken(json.token); return true }
+    } catch (e) { /* abaikan — pemanggil menampilkan error GAS aslinya */ }
+    return false
+  })()
+  const ok = await bootstrapPromise_
+  if (!ok || force) bootstrapPromise_ = null
+  return ok
+}
+
+async function refreshToken_() {
+  setGasToken('')
+  return ensureBootstrap(true)
+}
+
+function isTokenError_(json) {
+  return !!(json && json.ok === false && /token/i.test(json.error || ''))
 }
 export function getLastSlug() {
   return localStorage.getItem(LAST_SLUG_KEY) || ''
@@ -266,14 +310,21 @@ export async function saveInvite(slug, data) {
   const gasUrl = getGasUrl()
   if (gasUrl) {
     try {
-      const res = await fetch(gasUrl, {
+      await ensureBootstrap()
+      const doSave = () => fetch(gasUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         redirect: 'follow',
         body: JSON.stringify({ action: 'save', slug, token: getGasToken(), data: payload }),
       })
+      let res = await doSave()
       let json = null
       try { json = await res.json() } catch {}
+      if (isTokenError_(json) && await refreshToken_()) {
+        res = await doSave()
+        json = null
+        try { json = await res.json() } catch {}
+      }
       if (json && json.ok === false) {
         return { ok: false, via: 'gas', error: json.error || 'Gagal menyimpan ke Google Sheets' }
       }
@@ -328,49 +379,69 @@ export function listInvites() {
 export async function listInvitesRemote() {
   const gasUrl = getGasUrl()
   if (!gasUrl) return { ok: false, error: 'GAS belum disambungkan. Isi URL Web App di tab Pengaturan.' }
-  const res = await fetch(`${gasUrl}?action=list&token=${encodeURIComponent(getGasToken())}`, { redirect: 'follow' })
+  await ensureBootstrap()
+  const doList = () => fetch(`${gasUrl}?action=list&token=${encodeURIComponent(getGasToken())}`, { redirect: 'follow' })
+  let res = await doList()
   if (!res.ok) return { ok: false, error: `GAS error ${res.status}` }
-  return res.json()
+  let json = await res.json()
+  if (isTokenError_(json) && await refreshToken_()) {
+    res = await doList()
+    if (!res.ok) return { ok: false, error: `GAS error ${res.status}` }
+    json = await res.json()
+  }
+  return json
 }
 
 export async function updateInviteRemote(slug, patch) {
   const gasUrl = getGasUrl()
   if (!gasUrl) return { ok: false, error: 'GAS belum disambungkan.' }
-  try {
-    const res = await fetch(gasUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      redirect: 'follow',
-      body: JSON.stringify({ action: 'update', slug, token: getGasToken(), patch }),
-    })
-    if (res.ok) return res.json()
-  } catch (e) { }
+  await ensureBootstrap()
+  const attempt = async () => {
+    try {
+      const res = await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        body: JSON.stringify({ action: 'update', slug, token: getGasToken(), patch }),
+      })
+      if (res.ok) return res.json()
+    } catch (e) { }
 
-  // Fallback GET jika POST terhalang CORS
-  const url = `${gasUrl}?action=update&slug=${encodeURIComponent(slug)}&namaTamu=${encodeURIComponent(patch.namaTamu || '')}&token=${encodeURIComponent(getGasToken())}`
-  const resGet = await fetch(url, { redirect: 'follow' })
-  if (!resGet.ok) return { ok: false, error: `GAS error ${resGet.status}` }
-  return resGet.json()
+    // Fallback GET jika POST terhalang CORS
+    const url = `${gasUrl}?action=update&slug=${encodeURIComponent(slug)}&namaTamu=${encodeURIComponent(patch.namaTamu || '')}&token=${encodeURIComponent(getGasToken())}`
+    const resGet = await fetch(url, { redirect: 'follow' })
+    if (!resGet.ok) return { ok: false, error: `GAS error ${resGet.status}` }
+    return resGet.json()
+  }
+  let out = await attempt()
+  if (isTokenError_(out) && await refreshToken_()) out = await attempt()
+  return out
 }
 
 export async function deleteInviteRemote(slug) {
   const gasUrl = getGasUrl()
   if (!gasUrl) return { ok: false, error: 'GAS belum disambungkan.' }
-  try {
-    const res = await fetch(gasUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      redirect: 'follow',
-      body: JSON.stringify({ action: 'delete', slug, token: getGasToken() }),
-    })
-    if (res.ok) return res.json()
-  } catch (e) { }
+  await ensureBootstrap()
+  const attempt = async () => {
+    try {
+      const res = await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        body: JSON.stringify({ action: 'delete', slug, token: getGasToken() }),
+      })
+      if (res.ok) return res.json()
+    } catch (e) { }
 
-  // Fallback GET jika POST terhalang CORS
-  const url = `${gasUrl}?action=delete&slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(getGasToken())}`
-  const resGet = await fetch(url, { redirect: 'follow' })
-  if (!resGet.ok) return { ok: false, error: `GAS error ${resGet.status}` }
-  return resGet.json()
+    // Fallback GET jika POST terhalang CORS
+    const url = `${gasUrl}?action=delete&slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(getGasToken())}`
+    const resGet = await fetch(url, { redirect: 'follow' })
+    if (!resGet.ok) return { ok: false, error: `GAS error ${resGet.status}` }
+    return resGet.json()
+  }
+  let out = await attempt()
+  if (isTokenError_(out) && await refreshToken_()) out = await attempt()
+  return out
 }
 
 // --- Settings via GAS (spreadsheet sheet "settings", dikunci PIN admin) ---

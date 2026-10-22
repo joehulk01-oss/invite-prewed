@@ -28,6 +28,8 @@
  * API:
  *  POST { action:'getSettings', pin } → { ok:true, settings:{...} } / { ok:false, error }
  *  POST { action:'saveSettings', pin, settings:{...} } → { ok:true } / { ok:false, error }
+ *  POST { action:'bootstrap' } → { ok:true, token } baca sheet settings (full otomatis
+ *        tanpa PIN — keputusan user 2026-10-22; keamanan memang dilonggarkan)
  *  POST { action:'save', slug, token, data:{...undangan...} } → { ok:true, slug } / { ok:false, error }
  *  POST { action:'update', slug, token, patch:{namaTamu:'...'} } → { ok:true, updated:true } / { ok:false, error }
  *  POST { action:'delete', slug, token } → { ok:true, deleted:true } / { ok:false, error }
@@ -214,6 +216,15 @@ function doPost(e) {
       if (!pinCheck.ok) return json_({ ok: false, error: pinCheck.error });
       writeSettings_(body.settings);
       return json_({ ok: true });
+    }
+
+    // BOOTSTRAP OTOMATIS (keputusan user 2026-10-22: full otomatis — browser
+    // mana pun langsung aktif tanpa isi URL/PIN/token). Mengembalikan token
+    // dari sheet settings TANPA PIN. /admin-gas + ADMIN_PIN tetap jalan
+    // untuk MENGGANTI token; endpoint ini hanya membaca token tersimpan.
+    if (action === 'bootstrap') {
+      var bst = readSettings_();
+      return json_({ ok: true, token: String(bst.token || '') });
     }
 
     if (!checkToken_(body.token)) {
